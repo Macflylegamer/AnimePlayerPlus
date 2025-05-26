@@ -3,7 +3,6 @@ import sys
 import platform
 import logging
 from typing import Optional
-import time
 
 from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QIcon, QGuiApplication, QAction, QPixmap, QCursor, QPalette, QColor
@@ -248,14 +247,12 @@ class SettingsWindow(QDialog):
             'auto_skip_op': False,
             'auto_skip_ed': False,
             'auto_skip_recap': False,
-            'auto_skip_preview': False,
-            'skip_button_size': 100
+            'auto_skip_preview': False
         })
         self.ui.auto_skip_op.setChecked(aniskip_settings.get('auto_skip_op', False))
         self.ui.auto_skip_ed.setChecked(aniskip_settings.get('auto_skip_ed', False))
         self.ui.auto_skip_recap.setChecked(aniskip_settings.get('auto_skip_recap', False))
         self.ui.auto_skip_preview.setChecked(aniskip_settings.get('auto_skip_preview', False))
-        self.ui.skip_button_size.setValue(aniskip_settings.get('skip_button_size', 100))
 
         self.ui.buttonBox.accepted.connect(self.ok)
 
@@ -292,8 +289,7 @@ class SettingsWindow(QDialog):
             'auto_skip_op': self.ui.auto_skip_op.isChecked(),
             'auto_skip_ed': self.ui.auto_skip_ed.isChecked(),
             'auto_skip_recap': self.ui.auto_skip_recap.isChecked(),
-            'auto_skip_preview': self.ui.auto_skip_preview.isChecked(),
-            'skip_button_size': self.ui.skip_button_size.value()
+            'auto_skip_preview': self.ui.auto_skip_preview.isChecked()
         }
         config.set('aniskip', aniskip_settings)
         config.save_config()
@@ -606,54 +602,9 @@ class MainWindow(QMainWindow):
     def change_time(self):
         if mpv.time_pos is not None and int(mpv.time_pos) != self.ui.time.value():
             player.new_position(self.ui.time.value())
-            # Force update skip button state after seeking
-            if hasattr(window.ui, 'skip_button'):
-                current_segment = player.aniskip.get_current_segment(self.ui.time.value())
-                if current_segment:
-                    skip_type = current_segment.skip_type.value
-                    auto_skip_types = []
-                    if config.get('aniskip', {}).get('auto_skip_op', False):
-                        auto_skip_types.append('op')
-                    if config.get('aniskip', {}).get('auto_skip_ed', False):
-                        auto_skip_types.append('ed')
-                    if config.get('aniskip', {}).get('auto_skip_recap', False):
-                        auto_skip_types.append('recap')
-                    if config.get('aniskip', {}).get('auto_skip_preview', False):
-                        auto_skip_types.append('preview')
-                    if skip_type in auto_skip_types:
-                        window.ui.skip_button.setVisible(False)
-                    else:
-                        window.ui.skip_button.setVisible(True)
-                        skip_type_text = {
-                            'op': loc['Skip Opening'],
-                            'ed': loc['Skip Ending'],
-                            'recap': loc['Skip Recap'],
-                            'mixed-op': loc['Skip Mixed Opening'],
-                            'mixed-ed': loc['Skip Mixed Ending'],
-                            'preview': loc['Skip Preview']
-                        }.get(skip_type, f'Skip {skip_type}')
-                        window.ui.skip_button.setText(skip_type_text)
-                else:
-                    window.ui.skip_button.setVisible(False)
 
     def closeEvent(self, event):
-        try:
-            # Save current parameters
-            player.save_parameters()
-            
-            # Terminate MPV
-            if mpv:
-                mpv.terminate()
-            
-            # Accept the close event
-            event.accept()
-            
-            # Force quit the application
-            QApplication.quit()
-        except Exception as e:
-            logger.error(f"Error during window close: {e}")
-            # Force quit even if there's an error
-            QApplication.quit()
+        player.save_parameters()
 
     def open_file(self):
         file_name = QFileDialog.getOpenFileName(self,
@@ -891,111 +842,98 @@ class Player:
             menu_audio.exec(window.ui.audio.mapToGlobal(QPoint(0, 0)))
 
     def update_info(self, no_update_fps=True):
-        try:
-            # Use the global mpv instance instead of self.mpv
-            if not mpv:
-                return
+        # duration = player.duration
+        time_pos = mpv.time_pos
+        Player.info['codec'] = mpv.video_format if mpv.video_format is not None else mpv.audio_codec_name
+        Player.info['resolution'] = (mpv.width, mpv.height)
+        if no_update_fps:
+            Player.info['fps'] = mpv.estimated_vf_fps
+        Player.info['frame_drop'] = mpv.frame_drop_count
 
-            # duration = player.duration
-            time_pos = mpv.time_pos
-            if time_pos is None:
-                return
+        # Обновление информации о разрешении, FPS, кодеке и потерянных кадрах
+        str_info = {
+            'preset': Player.info['preset'],
+            'codec': f'{Player.info["codec"].upper()}' if Player.info["codec"] is not None else '',
+            'resolution': f'{Player.info["resolution"][0]}x{Player.info["resolution"][1]}' if Player.info["resolution"] != (None, None) else '',
+            'fps': f'{round(Player.info["fps"], 1) if Player.info["fps"] is not None else "0.0"} FPS' if Player.info["resolution"] != (None, None) else '',
+            'frame_drop': f'{loc["Frames lost"]}: {Player.info["frame_drop"]}' if Player.info["frame_drop"] is not None else ''
+        }
 
-            Player.info['codec'] = mpv.video_format if mpv.video_format is not None else mpv.audio_codec_name
-            Player.info['resolution'] = (mpv.width, mpv.height)
-            if no_update_fps:
-                Player.info['fps'] = mpv.estimated_vf_fps
-            Player.info['frame_drop'] = mpv.frame_drop_count
+        window.ui.mediaInfo.setText(' | '.join([string for string in str_info.values() if string != '']))
+        # Обновление кнопки ИГРАТЬ
+        if mpv.duration is not None and mpv.pause:
+            window.ui.play.setIcon(QIcon(icons.play))
+        # Обновление ползунка прокрутки и времени
+        if mpv.duration is not None:
+            if self.duration != mpv.duration:
+                self.duration = mpv.duration
+                window.ui.time.setMaximum(self.duration)
+                window.ui.allTime.setText('{:02d}:{:02d}'.format(*divmod(int(self.duration), 60)))
+        else:
+            window.ui.time.setMaximum(0)
+            window.ui.allTime.setText('00:00')
 
-            # Обновление информации о разрешении, FPS, кодеке и потерянных кадрах
-            str_info = {
-                'preset': Player.info['preset'],
-                'codec': f'{Player.info["codec"].upper()}' if Player.info["codec"] is not None else '',
-                'resolution': f'{Player.info["resolution"][0]}x{Player.info["resolution"][1]}' if Player.info["resolution"] != (None, None) else '',
-                'fps': f'{round(Player.info["fps"], 1) if Player.info["fps"] is not None else "0.0"} FPS' if Player.info["resolution"] != (None, None) else '',
-                'frame_drop': f'{loc["Frames lost"]}: {Player.info["frame_drop"]}' if Player.info["frame_drop"] is not None else ''
-            }
+        if time_pos is not None:
+            window.ui.time.setValue(time_pos)
+            window.ui.currentTime.setText('{:02d}:{:02d}'.format(*divmod(int(time_pos), 60)))
+        else:
+            window.ui.currentTime.setText('00:00')
+            window.ui.time.setValue(0)
 
-            window.ui.mediaInfo.setText(' | '.join([string for string in str_info.values() if string != '']))
-            # Обновление кнопки ИГРАТЬ
-            if mpv.duration is not None and mpv.pause:
-                window.ui.play.setIcon(QIcon(icons.play))
-            # Обновление ползунка прокрутки и времени
-            if mpv.duration is not None:
-                if self.duration != mpv.duration:
-                    self.duration = mpv.duration
-                    window.ui.time.setMaximum(self.duration)
-                    window.ui.allTime.setText('{:02d}:{:02d}'.format(*divmod(int(self.duration), 60)))
-            else:
-                window.ui.time.setMaximum(0)
-                window.ui.allTime.setText('00:00')
-
-            if time_pos is not None:
-                window.ui.time.setValue(time_pos)
-                window.ui.currentTime.setText('{:02d}:{:02d}'.format(*divmod(int(time_pos), 60)))
-            else:
-                window.ui.currentTime.setText('00:00')
-                window.ui.time.setValue(0)
-
-            # Add AniSkip debug logging
-            if mpv.time_pos is not None:
-                current_segment = self.aniskip.get_current_segment(mpv.time_pos)
-                if current_segment != self.current_segment:
-                    logger.debug(f"Current segment changed: {current_segment}")
-                    self.current_segment = current_segment
-                    # AniSkip auto-skip logic
-                    if current_segment:
-                        skip_type = current_segment.skip_type.value
-                        auto_skip_types = []
-                        if config.get('aniskip', {}).get('auto_skip_op', False):
-                            auto_skip_types.append('op')
-                        if config.get('aniskip', {}).get('auto_skip_ed', False):
-                            auto_skip_types.append('ed')
-                        if config.get('aniskip', {}).get('auto_skip_recap', False):
-                            auto_skip_types.append('recap')
-                        if config.get('aniskip', {}).get('auto_skip_preview', False):
-                            auto_skip_types.append('preview')
-                        # If auto-skip is enabled for this type, skip automatically
-                        if skip_type in auto_skip_types:
-                            logger.info(f"AniSkip auto-skipping {skip_type} to {current_segment.end}")
-                            mpv.seek(current_segment.end, reference="absolute")
-                            window.ui.skip_button.setVisible(False)
-                            return
-                        # Update skip button visibility and text (auto/hide logic)
-                        if current_segment:
-                            skip_type = current_segment.skip_type.value
-                            auto_skip_types = []
-                            if config.get('aniskip', {}).get('auto_skip_op', False):
-                                auto_skip_types.append('op')
-                            if config.get('aniskip', {}).get('auto_skip_ed', False):
-                                auto_skip_types.append('ed')
-                            if config.get('aniskip', {}).get('auto_skip_recap', False):
-                                auto_skip_types.append('recap')
-                            if config.get('aniskip', {}).get('auto_skip_preview', False):
-                                auto_skip_types.append('preview')
-                            # If auto-skip is enabled for this type, hide the button
-                            if skip_type in auto_skip_types:
-                                window.ui.skip_button.setVisible(False)
-                            else:
-                                window.ui.skip_button.setVisible(True)
-                                skip_type_text = {
-                                    'op': loc['Skip Opening'],
-                                    'ed': loc['Skip Ending'],
-                                    'recap': loc['Skip Recap'],
-                                    'mixed-op': loc['Skip Mixed Opening'],
-                                    'mixed-ed': loc['Skip Mixed Ending'],
-                                    'preview': loc['Skip Preview']
-                                }.get(skip_type, f'Skip {skip_type}')
-                                window.ui.skip_button.setText(skip_type_text)
-                                logger.debug(f"Skip button updated - Type: {skip_type_text}")
-                        else:
-                            window.ui.skip_button.setVisible(False)
-                            logger.debug("Skip button hidden")
-
-        except Exception as e:
-            # Handle all exceptions, including MPV shutdown
-            logger.debug(f"Error in update_info: {e}")
-            return
+        # Add AniSkip debug logging
+        if mpv.time_pos is not None:
+            current_segment = self.aniskip.get_current_segment(mpv.time_pos)
+            if current_segment != self.current_segment:
+                logger.debug(f"Current segment changed: {current_segment}")
+                self.current_segment = current_segment
+                # AniSkip auto-skip logic
+                if current_segment:
+                    skip_type = current_segment.skip_type.value
+                    auto_skip_types = []
+                    if config.get('aniskip', {}).get('auto_skip_op', False):
+                        auto_skip_types.append('op')
+                    if config.get('aniskip', {}).get('auto_skip_ed', False):
+                        auto_skip_types.append('ed')
+                    if config.get('aniskip', {}).get('auto_skip_recap', False):
+                        auto_skip_types.append('recap')
+                    if config.get('aniskip', {}).get('auto_skip_preview', False):
+                        auto_skip_types.append('preview')
+                    # If auto-skip is enabled for this type, skip automatically
+                    if skip_type in auto_skip_types:
+                        logger.info(f"AniSkip auto-skipping {skip_type} to {current_segment.end}")
+                        mpv.seek(current_segment.end, reference="absolute")
+                        window.ui.skip_button.setVisible(False)
+                        return
+                # Update skip button visibility and text (auto/hide logic)
+                if current_segment:
+                    skip_type = current_segment.skip_type.value
+                    auto_skip_types = []
+                    if config.get('aniskip', {}).get('auto_skip_op', False):
+                        auto_skip_types.append('op')
+                    if config.get('aniskip', {}).get('auto_skip_ed', False):
+                        auto_skip_types.append('ed')
+                    if config.get('aniskip', {}).get('auto_skip_recap', False):
+                        auto_skip_types.append('recap')
+                    if config.get('aniskip', {}).get('auto_skip_preview', False):
+                        auto_skip_types.append('preview')
+                    # If auto-skip is enabled for this type, hide the button
+                    if skip_type in auto_skip_types:
+                        window.ui.skip_button.setVisible(False)
+                    else:
+                        window.ui.skip_button.setVisible(True)
+                        skip_type_text = {
+                            'op': loc['Skip Opening'],
+                            'ed': loc['Skip Ending'],
+                            'recap': loc['Skip Recap'],
+                            'mixed-op': loc['Skip Mixed Opening'],
+                            'mixed-ed': loc['Skip Mixed Ending'],
+                            'preview': loc['Skip Preview']
+                        }.get(skip_type, f'Skip {skip_type}')
+                        window.ui.skip_button.setText(skip_type_text)
+                        logger.debug(f"Skip button updated - Type: {skip_type_text}")
+                else:
+                    window.ui.skip_button.setVisible(False)
+                    logger.debug("Skip button hidden")
 
     def play_file(self, file: str, timeout=3, position: float = 0):
         # Clear skip segments before playing new file
@@ -1310,8 +1248,7 @@ class Player:
                 'auto_skip_op': False,
                 'auto_skip_ed': False,
                 'auto_skip_recap': False,
-                'auto_skip_preview': False,
-                'skip_button_size': 100
+                'auto_skip_preview': False
             })
             logger.debug(f"Loaded AniSkip settings: {aniskip_settings}")
             config.set('aniskip', aniskip_settings)
@@ -1357,23 +1294,11 @@ class Player:
 
     def skip_current_segment(self):
         """Skip the current segment."""
-        # Add debounce to prevent multiple skips
-        if not hasattr(self, '_last_skip_time'):
-            self._last_skip_time = 0
-        
-        current_time = time.time()
-        if current_time - self._last_skip_time < 0.5:  # 500ms debounce
-            return
-            
-        self._last_skip_time = current_time
-        
         logger.debug(f"Skip button clicked. Current segment: {self.current_segment}")
         if self.current_segment:
             logger.debug(f"Skipping to time: {self.current_segment.end}")
             mpv.seek(self.current_segment.end)
             logger.debug("Skip completed")
-            # Hide the button after skipping
-            window.ui.skip_button.setVisible(False)
 
 
 # --- THEME SYSTEM ---

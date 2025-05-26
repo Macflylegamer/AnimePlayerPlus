@@ -17,7 +17,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QComboBox,
     QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
-    QSizePolicy, QVBoxLayout, QWidget, QSlider)
+    QSizePolicy, QVBoxLayout, QWidget)
 
 class Ui_SettingsWindow(object):
     def setupUi(self, SettingsWindow):
@@ -135,22 +135,6 @@ class Ui_SettingsWindow(object):
         self.auto_skip_preview.setObjectName(u"auto_skip_preview")
         self.auto_skip_preview.setText("Auto-skip previews")
         self.aniskip_layout.addWidget(self.auto_skip_preview)
-        
-        # Add skip button size control
-        self.skip_button_size_label = QLabel(SettingsWindow)
-        self.skip_button_size_label.setObjectName(u"skip_button_size_label")
-        self.skip_button_size_label.setText("Skip button size")
-        self.aniskip_layout.addWidget(self.skip_button_size_label)
-        
-        self.skip_button_size = QSlider(SettingsWindow)
-        self.skip_button_size.setObjectName(u"skip_button_size")
-        self.skip_button_size.setOrientation(Qt.Orientation.Horizontal)
-        self.skip_button_size.setMinimum(50)  # 50% of default size
-        self.skip_button_size.setMaximum(200)  # 200% of default size
-        self.skip_button_size.setValue(100)  # Default to 100%
-        self.skip_button_size.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.skip_button_size.setTickInterval(25)
-        self.aniskip_layout.addWidget(self.skip_button_size)
         
         self.verticalLayout.addWidget(self.aniskip_group)
 

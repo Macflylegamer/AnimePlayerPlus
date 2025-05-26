@@ -15,7 +15,7 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QCursor, QFont, QFontDatabase, QGradient,
     QIcon, QImage, QKeySequence, QLinearGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
-    QTransform, QFontMetrics)
+    QTransform)
 from PySide6.QtWidgets import (QApplication, QDockWidget, QFrame, QHBoxLayout,
     QLabel, QLayout, QListWidget, QListWidgetItem,
     QMainWindow, QMenu, QMenuBar, QPushButton,
@@ -256,58 +256,38 @@ class Ui_MainWindow(object):
             video_width = getattr(self, 'video_frame_width', None)
             video_height = getattr(self, 'video_frame_height', None)
             display_rect = get_video_display_rect(self.video, video_width, video_height)
-            # Calculate height based on video display area proportion
-            video_ratio = 0.06  # 6% of video dimensions (doubled from 3%)
-            base_height = int(display_rect.height() * video_ratio)
-            
-            # Apply reasonable limits to button height
-            min_height = int(display_rect.height() * 0.04) # 4% of video height (doubled from 2%)
-            max_height = int(display_rect.height() * 0.12) # 12% of video height (doubled from 6%)
-            base_height = max(min_height, min(base_height, max_height))
+            # Calculate size based on text and add some padding
+            text_width = self.skip_button.fontMetrics().horizontalAdvance(self.skip_button.text())
+            text_height = self.skip_button.fontMetrics().height()
+            padding_width = 40  # Add some horizontal padding
+            padding_height = 20  # Add some vertical padding
 
-            # Apply the skip button size setting
-            try:
-                import main
-                size_multiplier = main.config.get('aniskip', {}).get('skip_button_size', 100) / 100.0
-                base_height = int(base_height * size_multiplier)
-                
-                # Scale the font size based on the video height
-                base_font_size = int(display_rect.height() * 0.03)  # 3% of video height (doubled from 1.5%)
-                scaled_font_size = int(base_font_size * size_multiplier)
-                
-                # Scale the icon size based on the video height
-                base_icon_size = int(display_rect.height() * 0.04)  # 4% of video height (doubled from 2%)
-                scaled_icon_size = int(base_icon_size * size_multiplier)
-                self.skip_button.setIconSize(QSize(scaled_icon_size, scaled_icon_size))
-                
-                # Calculate padding based on base height
-                padding = int(base_height * 0.4)  # 40% of base height
-                
-                self.skip_button.setStyleSheet(f"""
-                    QPushButton#skip_button {{
-                        background-color: rgb(0, 0, 0);
-                        border: 2px solid white;
-                        color: white;
-                        font-weight: bold;
-                        font-size: {scaled_font_size}px;
-                        margin: 0;
-                        padding: {padding}px {padding}px;
-                    }}
-                    QPushButton#skip_button:hover {{
-                        background-color: rgb(40, 40, 40);
-                    }}
-                """)
-                
-                # Let Qt handle the width automatically and set minimum height
-                self.skip_button.setMinimumHeight(base_height)
-                self.skip_button.adjustSize()
-            except Exception:
-                pass
+            # Calculate a base size based on text and padding
+            base_button_width = text_width + padding_width
+            base_button_height = text_height + padding_height
 
-            # Position the button
+            # Calculate a size based on video display area proportion
+            scaled_button_width = int(display_rect.width() * 0.10) # 10% of video width
+            scaled_button_height = int(display_rect.height() * 0.05) # 5% of video height
+
+            # Choose the maximum of base size and scaled size to ensure text fits and button scales
+            button_width = max(base_button_width, scaled_button_width)
+            button_height = max(base_button_height, scaled_button_height)
+
+            # Apply reasonable limits to prevent excessively large or small buttons
+            min_button_width = 120
+            max_button_width = 300
+            min_button_height = 30
+            max_button_height = 60
+
+            button_width = max(min_button_width, min(button_width, max_button_width))
+            button_height = max(min_button_height, min(button_height, max_button_height))
+
+            self.skip_button.setFixedSize(button_width, button_height)
+
             self.skip_button.move(
-                display_rect.x() + display_rect.width() - self.skip_button.width() - int(display_rect.width() * 0.02),
-                display_rect.y() + display_rect.height() - self.skip_button.height() - int(display_rect.height() * 0.02)
+                display_rect.x() + display_rect.width() - button_width - int(display_rect.width() * 0.02),
+                display_rect.y() + display_rect.height() - button_height - int(display_rect.height() * 0.02)
             )
             self.skip_button.raise_()
 
