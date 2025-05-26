@@ -15,12 +15,15 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QCursor, QFont, QFontDatabase, QGradient,
     QIcon, QImage, QKeySequence, QLinearGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
-    QTransform)
+    QTransform, QFontMetrics)
 from PySide6.QtWidgets import (QApplication, QDockWidget, QFrame, QHBoxLayout,
     QLabel, QLayout, QListWidget, QListWidgetItem,
     QMainWindow, QMenu, QMenuBar, QPushButton,
     QSizePolicy, QSlider, QSpacerItem, QVBoxLayout,
-    QWidget)
+    QWidget, QToolButton)
+
+import aniskip
+from aniskip import SkipType
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -190,19 +193,138 @@ class Ui_MainWindow(object):
         self.verticalLayout_4.setSpacing(0)
         self.verticalLayout_4.setObjectName(u"verticalLayout_4")
         self.verticalLayout_4.setContentsMargins(0, 0, 0, 0)
-        self.video = QLabel(self.centralwidget)
-        self.video.setObjectName(u"video")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.video.sizePolicy().hasHeightForWidth())
-        self.video.setSizePolicy(sizePolicy)
-        self.video.setPixmap(QPixmap(u"../images/play-button.png"))
+
+        # Create a container for video and overlays
+        self.video_container = QWidget(self.centralwidget)
+        self.video_container.setObjectName("video_container")
+        self.video_container.setStyleSheet("background: transparent;")
+        self.video_container.setMinimumSize(1, 1)
+        self.video_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Set layout for the container
+        video_layout = QVBoxLayout(self.video_container)
+        video_layout.setContentsMargins(0, 0, 0, 0)
+        video_layout.setSpacing(0)
+
+        # Create the video widget
+        self.video = QLabel(self.video_container)
+        self.video.setObjectName("video")
         self.video.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video.setWordWrap(False)
         self.video.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.video.setStyleSheet("background: black;")
+        self.video.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        video_layout.addWidget(self.video)
 
-        self.verticalLayout_4.addWidget(self.video)
+        # Create the skip button as a separate widget that overlays the video container
+        self.skip_button = QPushButton(self.video_container)
+        self.skip_button.setObjectName("skip_button")
+        self.skip_button.setIcon(QIcon(QIcon.fromTheme("media-skip-forward")))
+        self.skip_button.setFlat(True)
+        self.skip_button.setVisible(False)
+        self.skip_button.setStyleSheet("""
+            QPushButton#skip_button {
+                background-color: rgb(0, 0, 0);
+                border: 2px solid white;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton#skip_button:hover {
+                background-color: rgb(40, 40, 40);
+            }
+        """)
+        self.skip_button.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.skip_button.raise_()
+
+        # Helper to get the displayed video rect inside QLabel
+        def get_video_display_rect(label, video_width, video_height):
+            label_width = label.width()
+            label_height = label.height()
+            if video_width is None or video_height is None or video_width == 0 or video_height == 0:
+                return QRect(0, 0, label_width, label_height)
+            scale = min(label_width / video_width, label_height / video_height)
+            display_width = int(video_width * scale)
+            display_height = int(video_height * scale)
+            x = (label_width - display_width) // 2
+            y = (label_height - display_height) // 2
+            return QRect(x, y, display_width, display_height)
+
+        # Update position and size based on actual video content area
+        def update_skip_button():
+            # Try to get video frame size from self, fallback to label size
+            video_width = getattr(self, 'video_frame_width', None)
+            video_height = getattr(self, 'video_frame_height', None)
+            display_rect = get_video_display_rect(self.video, video_width, video_height)
+            # Calculate height based on video display area proportion
+            video_ratio = 0.06  # 6% of video dimensions (doubled from 3%)
+            base_height = int(display_rect.height() * video_ratio)
+            
+            # Apply reasonable limits to button height
+            min_height = int(display_rect.height() * 0.04) # 4% of video height (doubled from 2%)
+            max_height = int(display_rect.height() * 0.12) # 12% of video height (doubled from 6%)
+            base_height = max(min_height, min(base_height, max_height))
+
+            # Apply the skip button size setting
+            try:
+                import main
+                size_multiplier = main.config.get('aniskip', {}).get('skip_button_size', 100) / 100.0
+                base_height = int(base_height * size_multiplier)
+                
+                # Scale the font size based on the video height
+                base_font_size = int(display_rect.height() * 0.03)  # 3% of video height (doubled from 1.5%)
+                scaled_font_size = int(base_font_size * size_multiplier)
+                
+                # Scale the icon size based on the video height
+                base_icon_size = int(display_rect.height() * 0.04)  # 4% of video height (doubled from 2%)
+                scaled_icon_size = int(base_icon_size * size_multiplier)
+                self.skip_button.setIconSize(QSize(scaled_icon_size, scaled_icon_size))
+                
+                # Calculate padding based on base height
+                padding = int(base_height * 0.4)  # 40% of base height
+                
+                self.skip_button.setStyleSheet(f"""
+                    QPushButton#skip_button {{
+                        background-color: rgb(0, 0, 0);
+                        border: 2px solid white;
+                        color: white;
+                        font-weight: bold;
+                        font-size: {scaled_font_size}px;
+                        margin: 0;
+                        padding: {padding}px {padding}px;
+                    }}
+                    QPushButton#skip_button:hover {{
+                        background-color: rgb(40, 40, 40);
+                    }}
+                """)
+                
+                # Let Qt handle the width automatically and set minimum height
+                self.skip_button.setMinimumHeight(base_height)
+                self.skip_button.adjustSize()
+            except Exception:
+                pass
+
+            # Position the button
+            self.skip_button.move(
+                display_rect.x() + display_rect.width() - self.skip_button.width() - int(display_rect.width() * 0.02),
+                display_rect.y() + display_rect.height() - self.skip_button.height() - int(display_rect.height() * 0.02)
+            )
+            self.skip_button.raise_()
+
+        # Connect both video and container resize events to update button
+        def handle_resize(event):
+            update_skip_button()
+            return QWidget.resizeEvent(self.video_container, event)
+        self.video_container.resizeEvent = handle_resize
+        self.video.resizeEvent = lambda event: (update_skip_button(), QWidget.resizeEvent(self.video, event))
+        # Initial button update
+        update_skip_button()
+
+        # Expose update_skip_button for external calls (e.g., from main.py)
+        self.video_container.update_skip_button = update_skip_button
+
+        # Add the container to the main layout
+        self.verticalLayout_4.addWidget(self.video_container)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
@@ -580,5 +702,6 @@ class Ui_MainWindow(object):
         self.audio.setText("")
         self.menu.setText("")
         self.fullscreen.setText("")
+        self.skip_button.setText("Skip")
     # retranslateUi
 

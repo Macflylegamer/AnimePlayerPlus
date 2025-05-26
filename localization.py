@@ -83,7 +83,19 @@ en = {
     'No video tracks': 'No video tracks',
     'No audio tracks': 'No audio tracks',
     'No subtitles': 'No subtitles',
-    'Add subtitles': 'Add subtitles'
+    'Add subtitles': 'Add subtitles',
+    'Auto-skip Opening': 'Auto-skip Opening',
+    'Auto-skip Ending': 'Auto-skip Ending',
+    'Auto-skip Recap': 'Auto-skip Recap',
+    'Auto-skip Preview': 'Auto-skip Preview',
+    'Skip Opening': 'Skip Opening',
+    'Skip Ending': 'Skip Ending',
+    'Skip Recap': 'Skip Recap',
+    'Skip Preview': 'Skip Preview',
+    'Skip Mixed Opening': 'Skip Mixed Opening',
+    'Skip Mixed Ending': 'Skip Mixed Ending',
+    'App theme': 'App theme',
+    'AniSkip Settings': 'AniSkip Settings'
 }
 
 ru = {
@@ -167,7 +179,19 @@ ru = {
     'No video tracks': 'Нет видео дорожек',
     'No audio tracks': 'Нет аудио дорожек',
     'No subtitles': 'Нет субтитров',
-    'Add subtitles': 'Добавить субтитры'
+    'Add subtitles': 'Добавить субтитры',
+    'Auto-skip Opening': 'Автопропуск опенинга',
+    'Auto-skip Ending': 'Автопропуск эндинга',
+    'Auto-skip Recap': 'Автопропуск рекапа',
+    'Auto-skip Preview': 'Автопропуск превью',
+    'Skip Opening': 'Пропустить опенинг',
+    'Skip Ending': 'Пропустить эндинг',
+    'Skip Recap': 'Пропустить рекап',
+    'Skip Preview': 'Пропустить превью',
+    'Skip Mixed Opening': 'Пропустить смешанный опенинг',
+    'Skip Mixed Ending': 'Пропустить смешанный эндинг',
+    'App theme': 'Тема приложения',
+    'AniSkip Settings': 'Настройки AniSkip'
 }
 
 ja = {
@@ -251,21 +275,135 @@ ja = {
     'No video tracks': 'ビデオトラックなし',
     'No audio tracks': 'オーディオトラックなし',
     'No subtitles': '字幕なし',
-    'Add subtitles': '字幕の追加'
+    'Add subtitles': '字幕を追加',
+    'Auto-skip Opening': 'オープニングを自動スキップ',
+    'Auto-skip Ending': 'エンディングを自動スキップ',
+    'Auto-skip Recap': '前回のあらすじを自動スキップ',
+    'Auto-skip Preview': '次回予告を自動スキップ',
+    'Skip Opening': 'オープニングをスキップ',
+    'Skip Ending': 'エンディングをスキップ',
+    'Skip Recap': '前回のあらすじをスキップ',
+    'Skip Preview': '次回予告をスキップ',
+    'Skip Mixed Opening': 'ミックスオープニングをスキップ',
+    'Skip Mixed Ending': 'ミックスエンディングをスキップ',
+    'App theme': 'アプリのテーマ',
+    'AniSkip Settings': 'AniSkip 設定'
+}
+
+fr = {
+    'lang': 'Français',
+    'File': 'Fichier',
+    'Open file': 'Ouvrir un fichier',
+    'Open URL': 'Ouvrir une URL',
+    'Open folder': 'Ouvrir un dossier',
+    'Close': 'Fermer',
+    'Exit': 'Quitter',
+    'Playback': 'Lecture',
+    'Play | Pause': 'Lecture | Pause',
+    'Fullscreen': 'Plein écran',
+    'Increasing image quality': "Amélioration de la qualité d'image",
+    'Disable': 'Désactiver',
+    'Other': 'Autre',
+    'Reference': 'Référence',
+    'About': 'À propos',
+    'Settings': 'Paramètres',
+    'Quality': 'Qualité',
+    'Mode': 'Mode',
+    'About program': "Lecteur multimédia écrit en Python utilisant PySide 6, mpv et l'algorithme de mise à l'échelle Anime4K\n\nSite : https://github.com/Communist02/AnimePlayer",
+    'Activate SVP': 'Activer SVP',
+    'Create config for Android': 'Créer une config pour Android',
+    'Play': 'Lecture',
+    'Pause': 'Pause',
+    'Menu': 'Menu',
+    'Next file': 'Fichier suivant',
+    'Previous file': 'Fichier précédent',
+    'Volume level': 'Niveau du volume',
+    'Frames lost': 'Images perdues',
+    'Information': 'Information',
+    'Clear': 'Effacer',
+    'Select': 'Sélectionner',
+    'Cancel': 'Annuler',
+    'Language selection': 'Sélection de la langue (redémarrage requis)',
+    'On startup open the last opened file': 'Ouvrir le dernier fichier au démarrage',
+    'Set the position of the last opened file': 'Définir la position du dernier fichier ouvert',
+    'Dark theme': 'Thème sombre',
+    'Speed': 'Vitesse',
+    'Playback speed': 'Vitesse de lecture',
+    'Subtitles': 'Sous-titres',
+    'Soundtrack': 'Piste audio',
+    'Choose file': 'Choisir un fichier',
+    'All supported files': 'Tous les fichiers pris en charge',
+    'Enter the URL': "Entrer l'URL",
+    'Opening a link': "Ouverture d'un lien",
+    'Select a folder': 'Sélectionner un dossier',
+    'Opening a folder': "Ouverture d'un dossier",
+    'You can use this config to use the Anime4K algorithm in the mpv video player on android': "Vous pouvez utiliser cette configuration pour utiliser l'algorithme Anime4K dans le lecteur mpv sur Android",
+    'Enter the path to the shaders': 'Entrer le chemin vers les shaders',
+    'Select the algorithm configuration': "Sélectionner la configuration de l'algorithme",
+    'All': 'Tous',
+    'Selected': 'Sélectionné',
+    'Off': 'Désactivé',
+    'Paste': 'Coller',
+    'Screenshot': "Capture d'écran",
+    'Take a screenshot': "Prendre une capture d'écran",
+    'Enter folder path for screenshots': 'Entrer le chemin du dossier pour les captures',
+    'Increase maximum volume up to 150%': "Augmenter le volume maximum jusqu'à 150%",
+    'Launch parameters': 'Paramètres de lancement',
+    'Manual launch parameters': "Utilisez le manuel mpv https://mpv.io/manual/\nMais gardez à l'esprit que la syntaxe Python est requise.\nAccédez à la variable \"player\".\nPar exemple, au lieu de --volume=50 utilisez player.volume = 50",
+    'Apply': 'Appliquer',
+    'Save': 'Enregistrer',
+    'Error': 'Erreur',
+    'Success': 'Succès',
+    'Volume +10': 'Volume +10',
+    'Volume -10': 'Volume -10',
+    'Rewind +5 sec': '+5 sec',
+    'Rewind -5 sec': '-5 sec',
+    'Zoom in': 'Agrandir',
+    'Zoom out': 'Rétrécir',
+    'Playlist': 'Liste de lecture',
+    'Theme': 'Thème',
+    'Light': 'Clair',
+    'Dark': 'Sombre',
+    'System': 'Système',
+    'All files': 'Tous les fichiers',
+    'Video': 'Vidéo',
+    'Audio': 'Audio',
+    'No video tracks': 'Aucune piste vidéo',
+    'No audio tracks': 'Aucune piste audio',
+    'No subtitles': 'Pas de sous-titres',
+    'Add subtitles': 'Ajouter des sous-titres',
+    'App theme': "Thème de l'application",
+    'Style': 'Style',
+    'OK': 'OK',
+    'AniSkip Settings': 'Paramètres AniSkip',
+    'Auto-skip Opening': 'Saut automatique du générique de début',
+    'Auto-skip Ending': 'Saut automatique du générique de fin',
+    'Auto-skip Recap': 'Saut automatique du récapitulatif',
+    'Auto-skip Preview': 'Saut automatique de l\'aperçu',
+    'Skip Opening': 'Sauter le générique de début',
+    'Skip Ending': 'Sauter le générique de fin',
+    'Skip Recap': 'Sauter le récapitulatif',
+    'Skip Preview': 'Sauter l\'aperçu',
+    'Skip Mixed Opening': 'Sauter le générique de début mixte',
+    'Skip Mixed Ending': 'Sauter le générique de fin mixte',
+    'App theme': "Thème de l'application",
+    'AniSkip Settings': 'Paramètres AniSkip'
 }
 
 strings = en
 
 
-def set_locale(lang):
+def set_locale(language):
     global strings
-    match lang:
+    match language:
         case 'Русский':
             strings = ru
         case 'English':
             strings = en
         case 'Japanese':
             strings = ja
+        case 'Français':
+            strings = fr
         case _:
             if os.name == 'nt':
                 windll = ctypes.windll.kernel32
@@ -277,5 +415,7 @@ def set_locale(lang):
                     strings = ru
                 case 'Japanese_Japan' | 'ja_JP':
                     strings = ja
+                case 'French_France' | 'fr_FR' | 'fr_FR.UTF-8' | 'fr':
+                    strings = fr
                 case _:
                     strings = en

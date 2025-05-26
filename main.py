@@ -1,9 +1,12 @@
 import os
 import sys
 import platform
+import logging
+from typing import Optional
+import time
 
 from PySide6.QtCore import Qt, QTimer, QPoint
-from PySide6.QtGui import QIcon, QGuiApplication, QAction, QPixmap, QCursor
+from PySide6.QtGui import QIcon, QGuiApplication, QAction, QPixmap, QCursor, QPalette, QColor
 from PySide6.QtWidgets import QMainWindow, QApplication, QDialog, QMenu, QFileDialog, QWidget, QStyleFactory
 
 import about_window
@@ -20,6 +23,8 @@ import screenshot_window
 import settings_window
 from config import ConfigManager
 from mpv import MPV
+import aniskip
+from aniskip import SkipType, SkipSegment
 
 name_program = 'Anime Player'
 version = '2.1.2'
@@ -32,6 +37,15 @@ config = ConfigManager('config.json')
 localization.set_locale(config.get('language'))
 loc = localization.strings
 
+# Set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class AndroidConfigWindow(QDialog):
     def __init__(self):
@@ -186,13 +200,21 @@ class SettingsWindow(QDialog):
 
         self.setWindowIcon(QIcon(f'{os.path.dirname(__file__) + os.sep}favicon.ico'))
 
-        match config.get('language'):
+        # Load language from config
+        lang = config.get('language', 'Auto')
+        self.ui.language.clear()
+        self.ui.language.addItems(['Auto', 'Русский', 'English', 'Japanese', 'Français'])
+        self.ui.language.setCurrentText(lang)
+
+        match lang:
             case 'Русский':
                 self.lang = 'Русский'
             case 'English':
                 self.lang = 'English'
             case 'Japanese':
                 self.lang = 'Japanese'
+            case 'Français':
+                self.lang = 'Français'
             case _:
                 self.lang = 'Auto'
 
@@ -204,20 +226,36 @@ class SettingsWindow(QDialog):
             case _:
                 self.theme = 'System'
 
+        self.ui.language.clear()
+        self.ui.language.addItems(['Auto', 'Русский', 'English', 'Japanese', 'Français'])
         self.ui.language.setCurrentText(self.lang)
         self.ui.openLastFile.setChecked(config.get('onOpenLastFile', True))
         self.ui.posLastFile.setChecked(config.get('onPosLastFile', True))
         self.ui.volumePlus.setChecked(config.get('volumePlus', False))
         self.ui.svp.setChecked(config.get('SVP', False))
-        self.ui.theme.setCurrentText(self.theme)
+        self.ui.appTheme.setCurrentText(self.theme)
         styles = QStyleFactory.keys()
         for i in range(len(styles)):
             styles[i] = styles[i].lower()
         self.ui.comboBox_style.addItems(styles)
         self.ui.comboBox_style.setCurrentText(config.get('style', app.style().name()))
 
-        self.ui.labelTheme.setVisible(False)
-        self.ui.theme.setVisible(False)
+        self.ui.labelAppTheme.setVisible(True)
+        self.ui.appTheme.setVisible(True)
+
+        # Load AniSkip settings
+        aniskip_settings = config.get('aniskip', {
+            'auto_skip_op': False,
+            'auto_skip_ed': False,
+            'auto_skip_recap': False,
+            'auto_skip_preview': False,
+            'skip_button_size': 100
+        })
+        self.ui.auto_skip_op.setChecked(aniskip_settings.get('auto_skip_op', False))
+        self.ui.auto_skip_ed.setChecked(aniskip_settings.get('auto_skip_ed', False))
+        self.ui.auto_skip_recap.setChecked(aniskip_settings.get('auto_skip_recap', False))
+        self.ui.auto_skip_preview.setChecked(aniskip_settings.get('auto_skip_preview', False))
+        self.ui.skip_button_size.setValue(aniskip_settings.get('skip_button_size', 100))
 
         self.ui.buttonBox.accepted.connect(self.ok)
 
@@ -228,37 +266,38 @@ class SettingsWindow(QDialog):
         self.ui.volumePlus.setText(loc['Increase maximum volume up to 150%'])
         self.ui.svp.setText(loc['Activate SVP'])
         self.ui.buttonBox.buttons()[1].setText(loc['Cancel'])
-        self.ui.labelTheme.setText(loc['Theme'])
+        self.ui.labelAppTheme.setText(loc['App theme'])
         self.ui.label_style.setText(loc['Theme'])
 
+        # Set localized text for AniSkip checkboxes
+        self.ui.auto_skip_op.setText(loc['Auto-skip Opening'])
+        self.ui.auto_skip_ed.setText(loc['Auto-skip Ending'])
+        self.ui.auto_skip_recap.setText(loc['Auto-skip Recap'])
+        self.ui.auto_skip_preview.setText(loc['Auto-skip Preview'])
+
+        # Set localized text for AniSkip Settings label
+        self.ui.aniskip_label.setText(loc['AniSkip Settings'])
+
     def ok(self):
+        config.set('language', self.ui.language.currentText())
         config.set('onOpenLastFile', self.ui.openLastFile.isChecked())
         config.set('onPosLastFile', self.ui.posLastFile.isChecked())
         config.set('SVP', self.ui.svp.isChecked())
         config.set('volumePlus', self.ui.volumePlus.isChecked())
         config.set('style', self.ui.comboBox_style.currentText())
-
-        if config.get('volumePlus', False) != self.ui.volumePlus.isChecked():
-            if not self.ui.volumePlus.isChecked() and mpv.volume > 100:
-                mpv.volume = 100
-            config.set('volumePlus', self.ui.volumePlus.isChecked())
-
-        if config.get('language', self.lang) != self.ui.language.currentText() or config.get('theme', self.theme) != self.ui.theme.currentText():
-            config.set('language', self.ui.language.currentText())
-            config.set('theme', self.ui.theme.currentText())
-
-        if self.ui.svp.isChecked():
-            if mpv.input_ipc_server != 'mpvpipe':
-                mpv.input_ipc_server = 'mpvpipe'
-                mpv.hwdec = 'auto-copy'
-                mpv.hwdec_codecs = 'all'
-                mpv.hr_seek_framedrop = False
-        else:
-            mpv.input_ipc_server = ''
-            mpv.hwdec = 'auto'
-            mpv.hr_seek_framedrop = True
-
+        config.set('theme', self.ui.appTheme.currentText())
         app.setStyle(self.ui.comboBox_style.currentText())
+        # Save AniSkip settings
+        aniskip_settings = {
+            'auto_skip_op': self.ui.auto_skip_op.isChecked(),
+            'auto_skip_ed': self.ui.auto_skip_ed.isChecked(),
+            'auto_skip_recap': self.ui.auto_skip_recap.isChecked(),
+            'auto_skip_preview': self.ui.auto_skip_preview.isChecked(),
+            'skip_button_size': self.ui.skip_button_size.value()
+        }
+        config.set('aniskip', aniskip_settings)
+        config.save_config()
+        apply_theme()
 
 
 class OpenURLWindow(QDialog):
@@ -356,14 +395,16 @@ class MainWindow(QMainWindow):
 
         self.ui.rightPanel.setVisible(False)
 
-        self.ui.play.setIcon(QIcon(icons.play))
-        self.ui.prev.setIcon(QIcon(icons.prev))
-        self.ui.next.setIcon(QIcon(icons.next))
-        self.ui.fullscreen.setIcon(QIcon(icons.fullscreen))
-        self.ui.audio.setIcon(QIcon(icons.audio))
-        self.ui.sub.setIcon(QIcon(icons.sub))
-        self.ui.menu.setIcon(QIcon(icons.menu))
-        self.ui.video.setPixmap(QPixmap(f'{os.path.dirname(__file__) + os.sep}images{os.sep}play-button.png'))
+        # Fix icon paths to use relative paths
+        icons_dir = os.path.join(os.path.dirname(__file__), 'images', 'icons')
+        self.ui.play.setIcon(QIcon(os.path.join(icons_dir, 'play_arrow_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.prev.setIcon(QIcon(os.path.join(icons_dir, 'skip_previous_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.next.setIcon(QIcon(os.path.join(icons_dir, 'skip_next_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.fullscreen.setIcon(QIcon(os.path.join(icons_dir, 'fullscreen_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.audio.setIcon(QIcon(os.path.join(icons_dir, 'music_note_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.sub.setIcon(QIcon(os.path.join(icons_dir, 'subtitles_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.menu.setIcon(QIcon(os.path.join(icons_dir, 'format_list_bulleted_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')))
+        self.ui.video.setPixmap(QPixmap(os.path.join(os.path.dirname(__file__), 'images', 'play-button.png')))
 
         self.ui.rightPanel.setTitleBarWidget(QWidget())
         self.ui.controlPanel.setTitleBarWidget(QWidget())
@@ -489,6 +530,9 @@ class MainWindow(QMainWindow):
 
         self.setAcceptDrops(True)
 
+        # Connect skip button
+        self.ui.skip_button.clicked.connect(lambda: player.skip_current_segment())
+
     def mouseMoveEvent(self, event):
         if player.fullscreen:
             player.update_fullscreen_layout(event.position().x(), event.position().y())
@@ -542,13 +586,74 @@ class MainWindow(QMainWindow):
     def timer_update():
         player.update_info()
         player.update_cursor()
+        # --- AUTO SKIP BUTTON VIDEO SIZE UPDATE ---
+        # Always update the video frame size for the skip button
+        if hasattr(window.ui, 'video'):
+            try:
+                window.ui.video_frame_width = mpv.width
+                window.ui.video_frame_height = mpv.height
+                # If the skip button and update function exist, update position
+                if hasattr(window.ui, 'skip_button') and hasattr(window.ui, 'video_container'):
+                    for child in window.ui.video_container.children():
+                        if callable(getattr(child, 'move', None)) and child.objectName() == 'skip_button':
+                            # Call the update function if it exists in the closure
+                            if 'update_skip_button' in window.ui.video_container.__dict__:
+                                window.ui.video_container.update_skip_button()
+                            break
+            except Exception:
+                pass
 
     def change_time(self):
         if mpv.time_pos is not None and int(mpv.time_pos) != self.ui.time.value():
             player.new_position(self.ui.time.value())
+            # Force update skip button state after seeking
+            if hasattr(window.ui, 'skip_button'):
+                current_segment = player.aniskip.get_current_segment(self.ui.time.value())
+                if current_segment:
+                    skip_type = current_segment.skip_type.value
+                    auto_skip_types = []
+                    if config.get('aniskip', {}).get('auto_skip_op', False):
+                        auto_skip_types.append('op')
+                    if config.get('aniskip', {}).get('auto_skip_ed', False):
+                        auto_skip_types.append('ed')
+                    if config.get('aniskip', {}).get('auto_skip_recap', False):
+                        auto_skip_types.append('recap')
+                    if config.get('aniskip', {}).get('auto_skip_preview', False):
+                        auto_skip_types.append('preview')
+                    if skip_type in auto_skip_types:
+                        window.ui.skip_button.setVisible(False)
+                    else:
+                        window.ui.skip_button.setVisible(True)
+                        skip_type_text = {
+                            'op': loc['Skip Opening'],
+                            'ed': loc['Skip Ending'],
+                            'recap': loc['Skip Recap'],
+                            'mixed-op': loc['Skip Mixed Opening'],
+                            'mixed-ed': loc['Skip Mixed Ending'],
+                            'preview': loc['Skip Preview']
+                        }.get(skip_type, f'Skip {skip_type}')
+                        window.ui.skip_button.setText(skip_type_text)
+                else:
+                    window.ui.skip_button.setVisible(False)
 
     def closeEvent(self, event):
-        player.save_parameters()
+        try:
+            # Save current parameters
+            player.save_parameters()
+            
+            # Terminate MPV
+            if mpv:
+                mpv.terminate()
+            
+            # Accept the close event
+            event.accept()
+            
+            # Force quit the application
+            QApplication.quit()
+        except Exception as e:
+            logger.error(f"Error during window close: {e}")
+            # Force quit even if there's an error
+            QApplication.quit()
 
     def open_file(self):
         file_name = QFileDialog.getOpenFileName(self,
@@ -688,6 +793,11 @@ class Player:
     }
     cursor_last: tuple = (0, 0)
     cursor_timer: int = 0
+    aniskip = None  # Will be initialized in __init__
+    current_segment: Optional[SkipSegment] = None
+
+    def __init__(self):
+        self.aniskip = aniskip.AniSkip(mpv_instance=mpv)
 
     @staticmethod
     def list_files(folder: str):
@@ -781,45 +891,117 @@ class Player:
             menu_audio.exec(window.ui.audio.mapToGlobal(QPoint(0, 0)))
 
     def update_info(self, no_update_fps=True):
-        # duration = player.duration
-        time_pos = mpv.time_pos
-        Player.info['codec'] = mpv.video_format if mpv.video_format is not None else mpv.audio_codec_name
-        Player.info['resolution'] = (mpv.width, mpv.height)
-        if no_update_fps:
-            Player.info['fps'] = mpv.estimated_vf_fps
-        Player.info['frame_drop'] = mpv.frame_drop_count
+        try:
+            # Use the global mpv instance instead of self.mpv
+            if not mpv:
+                return
 
-        # Обновление информации о разрешении, FPS, кодеке и потерянных кадрах
-        str_info = {
-            'preset': Player.info['preset'],
-            'codec': f'{Player.info["codec"].upper()}' if Player.info["codec"] is not None else '',
-            'resolution': f'{Player.info["resolution"][0]}x{Player.info["resolution"][1]}' if Player.info["resolution"] != (None, None) else '',
-            'fps': f'{round(Player.info["fps"], 1) if Player.info["fps"] is not None else "0.0"} FPS' if Player.info["resolution"] != (None, None) else '',
-            'frame_drop': f'{loc["Frames lost"]}: {Player.info["frame_drop"]}' if Player.info["frame_drop"] is not None else ''
-        }
+            # duration = player.duration
+            time_pos = mpv.time_pos
+            if time_pos is None:
+                return
 
-        window.ui.mediaInfo.setText(' | '.join([string for string in str_info.values() if string != '']))
-        # Обновление кнопки ИГРАТЬ
-        if mpv.duration is not None and mpv.pause:
-            window.ui.play.setIcon(QIcon(icons.play))
-        # Обновление ползунка прокрутки и времени
-        if mpv.duration is not None:
-            if self.duration != mpv.duration:
-                self.duration = mpv.duration
-                window.ui.time.setMaximum(self.duration)
-                window.ui.allTime.setText('{:02d}:{:02d}'.format(*divmod(int(self.duration), 60)))
-        else:
-            window.ui.time.setMaximum(0)
-            window.ui.allTime.setText('00:00')
+            Player.info['codec'] = mpv.video_format if mpv.video_format is not None else mpv.audio_codec_name
+            Player.info['resolution'] = (mpv.width, mpv.height)
+            if no_update_fps:
+                Player.info['fps'] = mpv.estimated_vf_fps
+            Player.info['frame_drop'] = mpv.frame_drop_count
 
-        if time_pos is not None:
-            window.ui.time.setValue(time_pos)
-            window.ui.currentTime.setText('{:02d}:{:02d}'.format(*divmod(int(time_pos), 60)))
-        else:
-            window.ui.currentTime.setText('00:00')
-            window.ui.time.setValue(0)
+            # Обновление информации о разрешении, FPS, кодеке и потерянных кадрах
+            str_info = {
+                'preset': Player.info['preset'],
+                'codec': f'{Player.info["codec"].upper()}' if Player.info["codec"] is not None else '',
+                'resolution': f'{Player.info["resolution"][0]}x{Player.info["resolution"][1]}' if Player.info["resolution"] != (None, None) else '',
+                'fps': f'{round(Player.info["fps"], 1) if Player.info["fps"] is not None else "0.0"} FPS' if Player.info["resolution"] != (None, None) else '',
+                'frame_drop': f'{loc["Frames lost"]}: {Player.info["frame_drop"]}' if Player.info["frame_drop"] is not None else ''
+            }
+
+            window.ui.mediaInfo.setText(' | '.join([string for string in str_info.values() if string != '']))
+            # Обновление кнопки ИГРАТЬ
+            if mpv.duration is not None and mpv.pause:
+                window.ui.play.setIcon(QIcon(icons.play))
+            # Обновление ползунка прокрутки и времени
+            if mpv.duration is not None:
+                if self.duration != mpv.duration:
+                    self.duration = mpv.duration
+                    window.ui.time.setMaximum(self.duration)
+                    window.ui.allTime.setText('{:02d}:{:02d}'.format(*divmod(int(self.duration), 60)))
+            else:
+                window.ui.time.setMaximum(0)
+                window.ui.allTime.setText('00:00')
+
+            if time_pos is not None:
+                window.ui.time.setValue(time_pos)
+                window.ui.currentTime.setText('{:02d}:{:02d}'.format(*divmod(int(time_pos), 60)))
+            else:
+                window.ui.currentTime.setText('00:00')
+                window.ui.time.setValue(0)
+
+            # Add AniSkip debug logging
+            if mpv.time_pos is not None:
+                current_segment = self.aniskip.get_current_segment(mpv.time_pos)
+                if current_segment != self.current_segment:
+                    logger.debug(f"Current segment changed: {current_segment}")
+                    self.current_segment = current_segment
+                    # AniSkip auto-skip logic
+                    if current_segment:
+                        skip_type = current_segment.skip_type.value
+                        auto_skip_types = []
+                        if config.get('aniskip', {}).get('auto_skip_op', False):
+                            auto_skip_types.append('op')
+                        if config.get('aniskip', {}).get('auto_skip_ed', False):
+                            auto_skip_types.append('ed')
+                        if config.get('aniskip', {}).get('auto_skip_recap', False):
+                            auto_skip_types.append('recap')
+                        if config.get('aniskip', {}).get('auto_skip_preview', False):
+                            auto_skip_types.append('preview')
+                        # If auto-skip is enabled for this type, skip automatically
+                        if skip_type in auto_skip_types:
+                            logger.info(f"AniSkip auto-skipping {skip_type} to {current_segment.end}")
+                            mpv.seek(current_segment.end, reference="absolute")
+                            window.ui.skip_button.setVisible(False)
+                            return
+                        # Update skip button visibility and text (auto/hide logic)
+                        if current_segment:
+                            skip_type = current_segment.skip_type.value
+                            auto_skip_types = []
+                            if config.get('aniskip', {}).get('auto_skip_op', False):
+                                auto_skip_types.append('op')
+                            if config.get('aniskip', {}).get('auto_skip_ed', False):
+                                auto_skip_types.append('ed')
+                            if config.get('aniskip', {}).get('auto_skip_recap', False):
+                                auto_skip_types.append('recap')
+                            if config.get('aniskip', {}).get('auto_skip_preview', False):
+                                auto_skip_types.append('preview')
+                            # If auto-skip is enabled for this type, hide the button
+                            if skip_type in auto_skip_types:
+                                window.ui.skip_button.setVisible(False)
+                            else:
+                                window.ui.skip_button.setVisible(True)
+                                skip_type_text = {
+                                    'op': loc['Skip Opening'],
+                                    'ed': loc['Skip Ending'],
+                                    'recap': loc['Skip Recap'],
+                                    'mixed-op': loc['Skip Mixed Opening'],
+                                    'mixed-ed': loc['Skip Mixed Ending'],
+                                    'preview': loc['Skip Preview']
+                                }.get(skip_type, f'Skip {skip_type}')
+                                window.ui.skip_button.setText(skip_type_text)
+                                logger.debug(f"Skip button updated - Type: {skip_type_text}")
+                        else:
+                            window.ui.skip_button.setVisible(False)
+                            logger.debug("Skip button hidden")
+
+        except Exception as e:
+            # Handle all exceptions, including MPV shutdown
+            logger.debug(f"Error in update_info: {e}")
+            return
 
     def play_file(self, file: str, timeout=3, position: float = 0):
+        # Clear skip segments before playing new file
+        player.current_segment = None
+        player.aniskip.skip_segments = []  # Clear the skip segments list
+        window.ui.skip_button.setVisible(False)
         mpv.play(file)
         if position > 0:
             try:
@@ -870,6 +1052,7 @@ class Player:
         :param pause: должна ли стоять пауза после открытия
         :param position: позиция
         """
+        logger.debug(f"Opening file: {file}")
         file = file.replace('/', os.sep)
         mpv.stop()
         mpv.pause = pause
@@ -887,6 +1070,14 @@ class Player:
         window.setWindowTitle(f'{self.filenames_only[window.ui.fileList.currentIndex().row()]} - {name_program}')
         self.play_file(self.files[window.ui.fileList.currentIndex().row()], position=position)
         config.set('opened', ['file', file])
+
+        # Fetch AniSkip segments
+        logger.debug("Fetching AniSkip segments...")
+        segments = self.aniskip.fetch_skip_segments(file)
+        logger.debug(f"Found {len(segments)} skip segments: {segments}")
+        if segments:
+            logger.debug(f"First segment: {segments[0]}")
+            logger.debug(f"Last segment: {segments[-1]}")
 
     def add_file(self, file: str):
         file = file.replace('/', os.sep)
@@ -1113,7 +1304,19 @@ class Player:
                     pass
             if style is not None:
                 app.setStyle(style)
-        except ValueError:
+
+            # Load AniSkip settings
+            aniskip_settings = config.get('aniskip', {
+                'auto_skip_op': False,
+                'auto_skip_ed': False,
+                'auto_skip_recap': False,
+                'auto_skip_preview': False,
+                'skip_button_size': 100
+            })
+            logger.debug(f"Loaded AniSkip settings: {aniskip_settings}")
+            config.set('aniskip', aniskip_settings)
+        except ValueError as e:
+            logger.error(f"Error in configuration: {e}")
             config.delete('opened')
             config.delete('file')
             config.delete('position')
@@ -1152,6 +1355,121 @@ class Player:
         mpv.glsl_shaders = ''
         Player.info['preset'] = ''
 
+    def skip_current_segment(self):
+        """Skip the current segment."""
+        # Add debounce to prevent multiple skips
+        if not hasattr(self, '_last_skip_time'):
+            self._last_skip_time = 0
+        
+        current_time = time.time()
+        if current_time - self._last_skip_time < 0.5:  # 500ms debounce
+            return
+            
+        self._last_skip_time = current_time
+        
+        logger.debug(f"Skip button clicked. Current segment: {self.current_segment}")
+        if self.current_segment:
+            logger.debug(f"Skipping to time: {self.current_segment.end}")
+            mpv.seek(self.current_segment.end)
+            logger.debug("Skip completed")
+            # Hide the button after skipping
+            window.ui.skip_button.setVisible(False)
+
+
+# --- THEME SYSTEM ---
+def apply_theme():
+    global os
+    theme = config.get('theme', 'System')
+    # Detect system theme if needed
+    if theme == 'System':
+        import platform
+        import os
+        # Try to detect dark mode on Linux (KDE/GNOME)
+        is_dark = False
+        if platform.system() == 'Linux':
+            # KDE
+            kde_color_scheme = os.environ.get('KDE_COLOR_SCHEME', '').lower()
+            if 'dark' in kde_color_scheme:
+                is_dark = True
+            # GNOME
+            gtk_theme = os.environ.get('GTK_THEME', '').lower()
+            if 'dark' in gtk_theme:
+                is_dark = True
+            # Try xdg settings
+            try:
+                import subprocess
+                xdg_theme = subprocess.check_output(['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'], stderr=subprocess.DEVNULL).decode().strip()
+                if 'dark' in xdg_theme:
+                    is_dark = True
+            except Exception:
+                pass
+        elif platform.system() == 'Windows':
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize') as key:
+                    apps_use_light_theme = winreg.QueryValueEx(key, 'AppsUseLightTheme')[0]
+                    is_dark = not bool(apps_use_light_theme)
+            except Exception:
+                pass
+        elif platform.system() == 'Darwin':
+            try:
+                import subprocess
+                result = subprocess.check_output(['defaults', 'read', '-g', 'AppleInterfaceStyle'], stderr=subprocess.DEVNULL).decode().strip()
+                if 'dark' in result.lower():
+                    is_dark = True
+            except Exception:
+                pass
+        theme = 'Dark' if is_dark else 'Light'
+
+    # Set palette and stylesheet
+    if theme == 'Dark':
+        dark_palette = QPalette()
+        dark_palette.setColor(QPalette.Window, QColor(30, 30, 30))
+        dark_palette.setColor(QPalette.WindowText, Qt.white)
+        dark_palette.setColor(QPalette.Base, QColor(20, 20, 20))
+        dark_palette.setColor(QPalette.AlternateBase, QColor(30, 30, 30))
+        dark_palette.setColor(QPalette.ToolTipBase, Qt.white)
+        dark_palette.setColor(QPalette.ToolTipText, Qt.white)
+        dark_palette.setColor(QPalette.Text, Qt.white)
+        dark_palette.setColor(QPalette.Button, QColor(45, 45, 45))
+        dark_palette.setColor(QPalette.ButtonText, Qt.white)
+        dark_palette.setColor(QPalette.BrightText, Qt.red)
+        dark_palette.setColor(QPalette.Link, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.HighlightedText, Qt.black)
+        app.setPalette(dark_palette)
+        app.setStyleSheet('QToolTip { color: #ffffff; background-color: #2a2a2a; border: 1px solid white; }')
+        icon_color = 'white'
+    else:
+        app.setPalette(QPalette())
+        app.setStyleSheet('')
+        icon_color = 'black'
+
+    # Change icon color for single-color icons
+    icons_dir = os.path.join(os.path.dirname(__file__), 'images', 'icons')
+    def recolor_icon(svg_path, color):
+        # Only recolor if it's a single-color SVG
+        try:
+            with open(svg_path, 'r') as f:
+                svg = f.read()
+            import re
+            svg = re.sub(r'fill="#?[A-Fa-f0-9]{3,6}"', f'fill="{color}"', svg)
+            temp_path = svg_path + f'.{color}.svg'
+            with open(temp_path, 'w') as f:
+                f.write(svg)
+            return temp_path
+        except Exception:
+            return svg_path
+    # Set icons
+    color_hex = '#ffffff' if icon_color == 'white' else '#000000'
+    window.ui.play.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'play_arrow_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.prev.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'skip_previous_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.next.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'skip_next_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.fullscreen.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'fullscreen_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.audio.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'music_note_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.sub.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'subtitles_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+    window.ui.menu.setIcon(QIcon(recolor_icon(os.path.join(icons_dir, 'format_list_bulleted_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg'), color_hex)))
+
 
 if __name__ == '__main__':
     app = QApplication()
@@ -1169,7 +1487,21 @@ if __name__ == '__main__':
 
     mpv: MPV = MPV(wid=window.ui.video.winId(), keep_open=True, profile='gpu-hq', ytdl=True, terminal='yes')
 
+    apply_theme()  # Apply theme on startup
+
     window.show()
     player = Player()
     player.start_player(sys.argv)
+
+    # --- Ensure skip button is positioned correctly at startup ---
+    def initial_skip_button_update():
+        try:
+            window.ui.video_frame_width = mpv.width
+            window.ui.video_frame_height = mpv.height
+            if hasattr(window.ui, 'video_container') and hasattr(window.ui.video_container, 'update_skip_button'):
+                window.ui.video_container.update_skip_button()
+        except Exception:
+            pass
+    QTimer.singleShot(100, initial_skip_button_update)
+
     sys.exit(app.exec())
